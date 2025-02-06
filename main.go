@@ -1,9 +1,8 @@
-// Co-authored by https://www.perplexity.ai/search/get-all-imported-cuelang-packa-TnTtLs06Q5CM_bGpcfHMqA
 package main
 
 import (
+	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
@@ -13,11 +12,13 @@ import (
 
 func findCueImports() []string {
 	importSet := make(map[string]struct{})
-	importPattern := regexp.MustCompile(`import\s*\(\s*([^)]+)\s*\)|import\s+"([^"]+)"`)
-	files, err := ioutil.ReadDir(".")
+	importPattern := regexp.MustCompile(`(?m)(?:import\s*\(\s*([^)]+)\s*\))|(?:import\s+(?:[\w\.]+\s+)?\"([^\"]+)\")`)
+
+	files, err := os.ReadDir(".")
 	if err != nil {
 		log.Fatal("Directory read error:", err)
 	}
+
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".cue") {
 			content, err := os.ReadFile(file.Name())
@@ -25,18 +26,34 @@ func findCueImports() []string {
 				log.Printf("Error reading %s: %v", file.Name(), err)
 				continue
 			}
+
 			matches := importPattern.FindAllStringSubmatch(string(content), -1)
 			for _, match := range matches {
-				groups := strings.ReplaceAll(strings.TrimSpace(match[1]+match[2]), "\n", " ")
-				for _, imp := range strings.Split(groups, " ") {
-					imp = strings.Trim(imp, `"`)
-					if imp != "" {
-						importSet[imp] = struct{}{}
+				if match[1] != "" { // Factored imports
+					for _, imp := range strings.Split(match[1], "\n") {
+						imp = strings.TrimSpace(imp)
+						if imp == "" {
+							continue
+						}
+						parts := strings.Fields(imp)
+						if len(parts) == 0 {
+							continue
+						}
+						path := strings.Trim(parts[len(parts)-1], `"`)
+						if path != "" {
+							importSet[path] = struct{}{}
+						}
+					}
+				} else if match[2] != "" { // Single import (aliased or direct)
+					path := strings.Trim(match[2], `"`)
+					if path != "" {
+						importSet[path] = struct{}{}
 					}
 				}
 			}
 		}
 	}
+
 	imports := make([]string, 0, len(importSet))
 	for imp := range importSet {
 		imports = append(imports, imp)
@@ -44,6 +61,34 @@ func findCueImports() []string {
 	sort.Strings(imports)
 	return imports
 }
+
+func renderTemplate(imports []string, templatePath string) (string, error) {
+	templateContent, err := os.ReadFile(templatePath)
+	if err != nil {
+		return "", fmt.Errorf("error reading template file: %w", err)
+	}
+
+	importsList := strings.Join(imports, ", ")
+	rendered := strings.ReplaceAll(string(templateContent), "{{imports}}", importsList)
+	return rendered, nil
+}
+
 func main() {
-	fmt.Println("Imported packages:", findCueImports())
+	templatePath := flag.String("template", "", "Path to template file")
+	flag.Parse()
+
+	imports := findCueImports()
+
+	if *templatePath != "" {
+		result, err := renderTemplate(imports, *templatePath)
+		if err != nil {
+			log.Fatal("Rendering error:", err)
+		}
+		fmt.Print(result)
+	} else {
+		fmt.Println("Detected imports:")
+		for _, imp := range imports {
+			fmt.Println("-", imp)
+		}
+	}
 }

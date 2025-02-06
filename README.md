@@ -1,7 +1,18 @@
 # cazelle
 
-Simple binary to generate `BUILD.bazel` for `rules_cue`.
+Generate BUILD.bazel for rules_cue
+
+Usage
+
+```sh
+cazelle:
+  -template string
+        Path to template file
+```
+
+## Develop
 
 ```sh
 go run .
-````
+go test -v
+```
