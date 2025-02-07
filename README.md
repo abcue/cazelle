@@ -1,6 +1,6 @@
 # cazelle
 
-Generate BUILD.bazel for rules_cue
+Generate `BUILD.bazel` for `rules_cue`
 
 ## Install
 
